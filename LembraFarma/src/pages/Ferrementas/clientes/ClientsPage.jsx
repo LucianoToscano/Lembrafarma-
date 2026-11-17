@@ -42,7 +42,6 @@ export default function ClientsPage() {
     setErroCpf("");
 
     const newClient = {
-      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
       nome: name,
       cpf,
       telefone,
@@ -58,7 +57,7 @@ export default function ClientsPage() {
     };
 
     if (!(await addClient(newClient))) {
-      setNotice("Não foi possível salvar o cliente no banco MySQL.");
+      setNotice("Não foi possível salvar o cliente na API.");
       return;
     }
 

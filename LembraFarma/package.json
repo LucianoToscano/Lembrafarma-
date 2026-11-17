@@ -13,7 +13,7 @@
     "server:auth": "npm --prefix ../LembraFarmaAPI run dev",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tests/medicamentos-core.test.js && node tests/cpf.test.js",
+    "test": "node tests/medicamentos-core.test.js && node tests/cpf.test.js && node --test tests/clients-api.test.js",
     "test:auth": "node --test tests/auth-api.test.js"
   },
   "dependencies": {

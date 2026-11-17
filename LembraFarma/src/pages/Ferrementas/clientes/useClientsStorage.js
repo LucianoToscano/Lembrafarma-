@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getAccountStorageKey, getAccessToken } from "../../../utils/accountStorage.js";
+import { buscarClientes, cadastrarCliente } from "./clientsApi.js";
 
 const storageName = "lembrafarma.clientes";
 
@@ -11,8 +12,17 @@ function readClients() {
     const clients = stored ? JSON.parse(stored) : [];
     return Array.isArray(clients) ? clients : [];
   } catch (error) {
-    console.error("Erro ao carregar clientes", error);
-    return null;
+    console.error("Erro ao carregar clientes locais", error);
+    return [];
+  }
+}
+
+function cacheClients(clients) {
+  try {
+    const storageKey = getAccountStorageKey(storageName);
+    if (storageKey) localStorage.setItem(storageKey, JSON.stringify(clients));
+  } catch (error) {
+    console.warn("Cache local de clientes indisponivel", error);
   }
 }
 
@@ -22,38 +32,39 @@ export default function useClientsStorage() {
 
   useEffect(() => {
     let active = true;
-    const savedClients = readClients();
-    if (savedClients === null) {
-      setLoadError(true);
-      return;
-    }
-    setClients(savedClients);
+    setClients(readClients());
     const token = getAccessToken();
-    if (token) fetch('/api/auth/clientes', { headers: { Authorization: `Bearer ${token}` } })
-      .then(async response => { if (!response.ok) throw new Error('Falha ao carregar clientes do MySQL'); return response.json(); })
-      .then(data => { if (active) { setClients(data); const key = getAccountStorageKey(storageName); if (key) localStorage.setItem(key, JSON.stringify(data)); } })
-      .catch(error => { console.error(error); if (active) setLoadError(true); });
+    if (!token) {
+      setLoadError(true);
+      return () => { active = false; };
+    }
+
+    buscarClientes(token)
+      .then((serverClients) => {
+        if (!active) return;
+        setClients(serverClients);
+        setLoadError(false);
+        cacheClients(serverClients);
+      })
+      .catch((error) => {
+        console.error("Falha ao consultar clientes na API", error);
+        if (active) setLoadError(true);
+      });
     return () => { active = false; };
   }, []);
 
   async function addClient(client) {
-    const token = getAccessToken();
-    if (!token) return false;
     try {
-      const response = await fetch("/api/auth/clientes", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(client) });
-      if (!response.ok) return false;
-    } catch (error) { console.error(error); return false; }
-    const nextClients = [...clients, client];
-    try {
-      const storageKey = getAccountStorageKey(storageName);
-      if (!storageKey) return false;
-      localStorage.setItem(storageKey, JSON.stringify(nextClients));
+      const created = await cadastrarCliente(client, getAccessToken());
+      const next = [...clients, created];
+      setClients(next);
+      setLoadError(false);
+      cacheClients(next);
+      return true;
     } catch (error) {
-      console.error("Erro ao salvar cliente", error);
+      console.error("Falha ao cadastrar cliente na API", error);
       return false;
     }
-    setClients(nextClients);
-    return true;
   }
 
   return { clients, loadError, addClient };
