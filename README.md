@@ -19,3 +19,20 @@ O GitHub Actions executa testes isolados, sem conexão com o banco real. Para de
 - Trabalhar somente na `front`; não editar `main`, `develop` ou `uniao` sem autorização.
 - Não publicar segredos ou dados reais.
 - Revisar testes e mudanças antes de levar qualquer correção para o repositório oficial.
+
+## Abrir o projeto no GitHub Codespaces
+
+1. Acesse a branch `front` deste repositório.
+2. Escolha **Code > Codespaces > Create codespace on front**.
+3. O Codespaces instalará as dependências do React e do Express automaticamente.
+4. No terminal web, execute:
+
+   ```bash
+   node tools/dev-sandbox.cjs
+   ```
+
+5. Na aba **Ports**, abra a porta **5173**. Mantenha a visibilidade **Private**; a API usa a porta 3000 somente no loopback interno.
+
+Este modo executa a API em `NODE_ENV=test`, com segredo JWT aleatório a cada início e **SQLite apenas em memória**. Os dados de cadastro fictícios desaparecem ao encerrar o processo; não há conexão com MySQL ou TiDB e o `.env` não é lido. Não use dados reais de farmácias, clientes ou senhas.
+
+O comando inicia tanto o Vite quanto a API; use `Ctrl+C` no terminal para parar. O workflow da branch `front` também testa automaticamente cadastro, login JWT e listagem/cadastro de clientes usando o mesmo ambiente isolado.

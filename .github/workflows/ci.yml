@@ -129,3 +129,5 @@ jobs:
         run: npm ci --prefix LembraFarmaAPI
       - name: Testar backend com SQLite em memoria
         run: npm test --prefix LembraFarmaAPI
+      - name: Testar integracao local via proxy, JWT e clientes
+        run: node tools/smoke-sandbox.cjs
