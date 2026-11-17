@@ -1,0 +1,18 @@
+# Segredos e dados locais
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+**/data/accounts.json
+
+# Dependencias, gerados e temporarios
+node_modules/
+dist/
+coverage/
+.vite/
+*.log
+.DS_Store
+Thumbs.db

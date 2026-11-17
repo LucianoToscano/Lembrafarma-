@@ -1,0 +1,131 @@
+name: LembraFarma - importar e validar
+
+on:
+  push:
+    branches: [front]
+  workflow_dispatch:
+
+jobs:
+  importar:
+    name: Preparar copia limpa (uma vez)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout somente da branch front
+        uses: actions/checkout@v4
+        with:
+          ref: front
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Importar codigo com imagens, sem segredos nem historico do autor
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f LembraFarma/package.json && -f LembraFarmaAPI/package.json ]]; then
+            echo "O codigo ja foi importado; preservando arquivos existentes."
+            exit 0
+          fi
+
+          git clone --depth=1 --branch main https://github.com/EduHunterDev/lembrafarma-.git "$RUNNER_TEMP/lembrafarma-upstream"
+
+          git rm -r --cached --ignore-unmatch LembraFarma LembraFarmaAPI
+          rm -rf LembraFarma LembraFarmaAPI
+          mkdir -p LembraFarma LembraFarmaAPI
+          for pasta in LembraFarma LembraFarmaAPI; do
+            rsync -a \
+              --exclude='.git' --exclude='.env' --exclude='.env.*' \
+              --exclude='node_modules' --exclude='dist' --exclude='coverage' \
+              --exclude='*.pem' --exclude='*.key' --exclude='*.p12' --exclude='*.pfx' \
+              --exclude='accounts.json' \
+              "$RUNNER_TEMP/lembrafarma-upstream/$pasta/" "$pasta/"
+          done
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          arquivo = Path("LembraFarma/tests/medicamentos-core.test.js")
+          texto = arquivo.read_text(encoding="utf-8")
+          if "const test = require('node:test');" in texto and "} = require('../js/medicamentos-core.js');" in texto:
+              texto = texto.replace("const test = require('node:test');", 'import test from "node:test";')
+              texto = texto.replace("const assert = require('node:assert/strict');", 'import assert from "node:assert/strict";')
+              texto = texto.replace("} = require('../js/medicamentos-core.js');", "} = globalThis.MedicamentosCore;")
+              arquivo.write_text('import "../js/medicamentos-core.js";\n' + texto, encoding="utf-8")
+          else:
+              raise SystemExit("Formato inesperado do teste de medicamentos; importacao interrompida.")
+
+          arquivo = Path("LembraFarma/src/pages/AuthPage.jsx")
+          texto = arquivo.read_text(encoding="utf-8")
+          antes = '<h1 className="text-2xl sm:text-3xl font-bold leading-tight text-white">'
+          depois = '<h1 className="text-2xl sm:text-3xl font-bold leading-tight" style={{ color: "#ffffff" }}>'
+          if antes in texto:
+              arquivo.write_text(texto.replace(antes, depois), encoding="utf-8")
+          elif depois not in texto:
+              raise SystemExit("Titulo de autenticacao diferente do esperado; importacao interrompida.")
+
+          arquivo = Path("LembraFarma/css/style.css")
+          texto = arquivo.read_text(encoding="utf-8")
+          if "// Compra e Recompra" in texto:
+              arquivo.write_text(texto.replace("// Compra e Recompra", "/* Compra e Recompra */"), encoding="utf-8")
+          PY
+
+          if find LembraFarma LembraFarmaAPI -type f \( -name '.env' -o -name '.env.*' -o -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' -o -name 'accounts.json' \) | grep -q .; then
+            echo "::error::Arquivo sensivel detectado. Importacao interrompida."
+            exit 1
+          fi
+
+          git add -A -- LembraFarma LembraFarmaAPI
+          if git diff --cached --name-only | grep -Eq '(^|/)(\.env($|\.)|accounts\.json$)|\.(pem|key|p12|pfx)$'; then
+            echo "::error::Arquivo sensivel selecionado para commit."
+            exit 1
+          fi
+          if [[ ! -f LembraFarma/package.json || ! -f LembraFarmaAPI/package.json || ! -f LembraFarma/assets/Logo.png ]]; then
+            echo "::error::Arquivos essenciais ausentes."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(front): importar codigo e imagens sem segredos"
+          git push origin HEAD:front
+
+  testes:
+    name: React + API (SQLite isolado)
+    needs: importar
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout da front apos importacao
+        uses: actions/checkout@v4
+        with:
+          ref: front
+          persist-credentials: false
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verificar ausencia de arquivos sensiveis versionados
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -Eq '(^|/)(\.env($|\.)|accounts\.json$)|\.(pem|key|p12|pfx)$'; then
+            echo "::error::Ha arquivos sensiveis rastreados."
+            exit 1
+          fi
+          test -f LembraFarma/assets/Logo.png
+          test -f LembraFarma/package-lock.json
+          test -f LembraFarmaAPI/package-lock.json
+      - name: Instalar dependencias do frontend
+        run: npm ci --prefix LembraFarma
+      - name: Testar logica e CPF
+        run: npm test --prefix LembraFarma
+      - name: Testar autenticacao do frontend
+        run: npm run test:auth --prefix LembraFarma
+      - name: Compilar frontend React
+        run: npm run build --prefix LembraFarma
+      - name: Instalar dependencias da API
+        run: npm ci --prefix LembraFarmaAPI
+      - name: Testar backend com SQLite em memoria
+        run: npm test --prefix LembraFarmaAPI
