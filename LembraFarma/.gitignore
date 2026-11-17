@@ -1,0 +1,4 @@
+# Dependências (recriadas com npm install)
+node_modules/
+.env
+.env
